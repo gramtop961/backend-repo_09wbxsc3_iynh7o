@@ -1,48 +1,99 @@
 """
-Database Schemas
+Application Database Schemas
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
+Each Pydantic model corresponds to a MongoDB collection with the
+collection name equal to the lowercase of the class name.
 
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+Use these models for request/response validation.
 """
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field, EmailStr
 
-from pydantic import BaseModel, Field
-from typing import Optional
+# -------------------- Core Domain Schemas --------------------
 
-# Example schemas (replace with your own):
+class ProposalInput(BaseModel):
+    title: str = Field(..., description="Event or program title")
+    description: str = Field(..., description="Overview and goals")
+    date: Optional[str] = Field(None, description="Date or date range")
+    location: Optional[str] = Field(None, description="Event location or service region")
+    audience_size: Optional[int] = Field(None, ge=0)
+    demographics: Optional[str] = Field(None, description="Audience demographics summary")
+    engagement_channels: Optional[List[str]] = Field(default_factory=list, description="Channels: email, social, on-site, etc.")
+    objectives: Optional[List[str]] = Field(default_factory=list)
+    industries_target: Optional[List[str]] = Field(default_factory=list, description="Industries to prioritize for sponsors")
 
-class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+class BenefitTier(BaseModel):
+    name: str
+    price: float
+    benefits: List[str]
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+class Proposal(BaseModel):
+    title: str
+    description: str
+    date: Optional[str] = None
+    location: Optional[str] = None
+    audience_summary: str
+    value_proposition: List[str]
+    tiers: List[BenefitTier]
+    objectives: List[str] = Field(default_factory=list)
 
-# Add your own schemas here:
-# --------------------------------------------------
+class Sponsor(BaseModel):
+    name: str
+    industry: str
+    location: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    status: Literal[
+        'new',
+        'contacted',
+        'in_discussion',
+        'pending',
+        'confirmed',
+        'declined'
+    ] = 'new'
+    proposal_id: Optional[str] = Field(None, description="Related proposal id if applicable")
+    notes: Optional[str] = None
+    next_follow_up: Optional[str] = Field(None, description="ISO date string for next follow-up")
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class Interaction(BaseModel):
+    sponsor_id: str
+    type: Literal['email', 'call', 'meeting', 'note'] = 'note'
+    content: str
+
+class FollowUp(BaseModel):
+    sponsor_id: str
+    due_date: str
+    note: Optional[str] = None
+
+# -------------------- Auxiliary Schemas (Requests) --------------------
+
+class FindSponsorsRequest(BaseModel):
+    location: str
+    industries: List[str] = Field(default_factory=list)
+    limit: int = 10
+
+class GenerateEmailRequest(BaseModel):
+    sponsor_id: str
+    proposal_id: Optional[str] = None
+    tone: Literal['professional', 'friendly', 'concise'] = 'professional'
+
+class UpdateStatusRequest(BaseModel):
+    sponsor_id: str
+    status: Sponsor.model_fields['status'].annotation  # reuse literal
+
+class AddNoteRequest(BaseModel):
+    sponsor_id: str
+    note: str
+
+class LogInteractionRequest(BaseModel):
+    sponsor_id: str
+    type: Interaction.model_fields['type'].annotation
+    content: str
+
+class ScheduleFollowUpRequest(BaseModel):
+    sponsor_id: str
+    due_date: str
+    note: Optional[str] = None
+
+# The Flames database viewer can introspect these models via /schema
